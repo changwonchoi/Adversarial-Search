@@ -121,9 +121,9 @@ class CustomPlayer(DataPlayer):
         opp_liberties = state.liberties(opp_loc)
         distance = self.distance(state)
         if distance >= 2:
-            return len(own_liberties) - len(opp_liberties)
+            return 2*len(own_liberties) - 2*len(opp_liberties) + self.intersection(state, own_liberties, opp_liberties)
         else:
-            return len(own_liberties) - 2*len(opp_liberties)
+            return len(own_liberties) - 2*len(opp_liberties) + self.intersection(state, own_liberties, opp_liberties)
     
     def distance(self, state):
         """ minimum distance to the walls """
