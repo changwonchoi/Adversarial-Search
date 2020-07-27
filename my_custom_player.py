@@ -36,12 +36,13 @@ class CustomPlayer(DataPlayer):
           Refer to (and use!) the Isolation.play() function to run games.
         **********************************************************************
         """
-       
+        
+        # The player chooses random move at first.
         if state.ply_count < 2:
             self.queue.put(random.choice(state.actions()))
             
         else:
-            depth_limit = 3
+            depth_limit = 4
             move = None
             for depth in range(1, depth_limit+1):
                 move = self.alpha_beta_search(state, self.player_id, depth)
@@ -55,7 +56,7 @@ class CustomPlayer(DataPlayer):
             if state.terminal_test():
                 return state.utility(play_id)
             if depth <= 0:
-                return self.base_score(state,play_id)
+                return self.combined_score(state,play_id)
             value = float("inf")
             for action in state.actions():
                 value = min(value, max_value(state.result(action), alpha, beta, depth-1))
@@ -68,7 +69,7 @@ class CustomPlayer(DataPlayer):
             if state.terminal_test():
                 return state.utility(play_id)
             if depth <= 0:
-                return self.base_score(state,play_id)
+                return self.combined_score(state,play_id)
             value = float("-inf")
             for action in state.actions():
                 value = max(value, min_value(state.result(action), alpha, beta, depth-1))
@@ -89,49 +90,87 @@ class CustomPlayer(DataPlayer):
                 best_move = action
         return best_move
 
+    """
+    Basic heuristic function implemented in the class.
+    Compares the number of my liberties and the opponent's liberties
+    """
     def base_score(self, state, player_id):
-            own_loc = state.locs[player_id]
-            opp_loc = state.locs[1 - player_id]
-            own_liberties = state.liberties(own_loc)
-            opp_liberties = state.liberties(opp_loc)
-            return len(own_liberties) - len(opp_liberties)
+        my_loc = state.locs[player_id]
+        opp_loc = state.locs[1 - player_id]
+        my_liberties = state.liberties(my_loc)
+        opp_liberties = state.liberties(opp_loc)
+        return len(my_liberties) - len(opp_liberties)
         
+    """
+    Heuristic function that aims to limit the opponent's move by blocking it.
+    The function puts a heavier weight on the opponent's liberties,
+    so that the custom player will try to choose a move where the the opponent has lesser moves.
+    Also, my adding the intersection function, the custom player seeks to choose a move
+    that could have been one of the opponent's available moves, thus the player can block the opponent's  next move.
+    """
     def intersect_score(self, state, player_id):
-        own_loc = state.locs[player_id]
+        my_loc = state.locs[player_id]
         opp_loc = state.locs[1 - player_id]
-        own_liberties = state.liberties(own_loc)
+        my_liberties = state.liberties(my_loc)
         opp_liberties = state.liberties(opp_loc)
-        return len(own_liberties) - 2*len(opp_liberties) + self.intersection(state, own_liberties, opp_liberties)
+        return len(my_liberties) - 2*len(opp_liberties) + self.intersection(state, my_liberties, opp_liberties)
     
+    
+    """
+    Heuristic to stay away from the wall.
+    Through some research, I found out that going near the wall traps the player.
+    For example, if a player is 1 unit away from a wall, the wall limits two moves of the player.
+    If the player is right by the wall, the wall limits 4 moves of the player.
+    If the player is 1 unit away from walls on both x and y coordinates, the walls limit four moves of the player.
+    Finally if the player is at the corner of the board, the player only has maximum of three moves.
+    Therefore this heuristic puts more weight on the case where the player is at least 2 units away from each wall,
+    so that the player is more likely to stay away from the wall.
+    """
     def avoid_wall_score(self, state, player_id):
-        own_loc = state.locs[player_id]
+        my_loc = state.locs[player_id]
         opp_loc = state.locs[1 - player_id]
-        own_liberties = state.liberties(own_loc)
+        my_liberties = state.liberties(my_loc)
         opp_liberties = state.liberties(opp_loc)
-        distance = self.distance(state)
-        if distance >= 2:
-            return 2*len(own_liberties) - len(opp_liberties) + self.intersection(state, own_liberties, opp_liberties)
+        if self.distance(state):
+            return 2*len(my_liberties) - len(opp_liberties)
         else:
-            return len(own_liberties) - len(opp_liberties) + self.intersection(state, own_liberties, opp_liberties)
-        
-    def combined_score(self, state, player_id):
-        own_loc = state.locs[player_id]
-        opp_loc = state.locs[1 - player_id]
-        own_liberties = state.liberties(own_loc)
-        opp_liberties = state.liberties(opp_loc)
-        distance = self.distance(state)
-        if distance >= 2:
-            return 2*len(own_liberties) - 2*len(opp_liberties) + self.intersection(state, own_liberties, opp_liberties)
-        else:
-            return len(own_liberties) - 2*len(opp_liberties) + self.intersection(state, own_liberties, opp_liberties)
+            return len(my_liberties) - len(opp_liberties)
     
+    """
+    Heuristic that combines both intersection and avoid-wall heuristics.
+    I thought of different ways to combine the two heuristics, but I think this one makes most sense.
+    When the number of my_liberties is multiplied by two, coustom player is more likely to play to save its moves.
+    In contrast, when the number of opp_liberties is multiplied by two, custom player is more likely to play to get rid of the opponent's moves.
+    Intersection heuristic aims to limit opponent's move, and avoid-wall heuristic aims to avoid wall, so that the player will have more available moves.
+    Therefore, I put more weight on the move that avoids walls, but at the same time I kept the weight on opponent's liberties,
+    so that the player will still try to block the opponent's move while trying to avoid the wall as well.
+    """
+    def combined_score(self, state, player_id):
+        my_loc = state.locs[player_id]
+        opp_loc = state.locs[1 - player_id]
+        my_liberties = state.liberties(my_loc)
+        opp_liberties = state.liberties(opp_loc)
+        if self.distance(state):
+            return 2*len(my_liberties) - 2*len(opp_liberties) + self.intersection(state, my_liberties, opp_liberties)
+        else:
+            return len(my_liberties) - 2*len(opp_liberties) + self.intersection(state, my_liberties, opp_liberties)
+    
+    """
+    Helper function to calculate the players distance to each wall, and determine if the player is close to the wall or not.
+    """
     def distance(self, state):
         """ minimum distance to the walls """
-        own_loc = state.locs[state.player()]
-        x_player, y_player = own_loc // (_WIDTH + 2), own_loc % (_WIDTH + 2)
-
-        return min(x_player, _WIDTH + 1 - x_player, y_player, _HEIGHT - 1 - y_player)
+        my_loc = state.locs[state.player()]
+        x = my_loc // (_WIDTH + 2)
+        y = my_loc % (_WIDTH + 2)
+        if min(x, _WIDTH + 1 - x, y, _HEIGHT - 1 - y) >= 2:
+            return True
+        else:
+            return False
    
-    def intersection(self, state, own_liberties, opp_liberties):
-        intersection = [x for x in own_liberties if x in opp_liberties]
+    """
+    Helper function to calculate how many of the player's moves interset with the opponent's moves.
+    """
+    def intersection(self, state, my_liberties, opp_liberties):
+        intersection = [action for action in my_liberties if action in opp_liberties]
         return len(intersection)
