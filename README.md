@@ -1,5 +1,5 @@
 
-# Build an Adversarial Game Playing Agent
+## Built an Adversarial Game Playing Agent as part of AI nanodegree program from Udacity
 
 ![Example game of isolation on a square board](viz.gif)
 
